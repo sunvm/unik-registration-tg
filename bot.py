@@ -177,6 +177,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if str(user_id) not in applications:
                 applications[str(user_id)] = []
             
+            # Проверяем, не была ли заявка уже обработана
+            user_apps = applications.get(str(user_id), [])
+            if user_apps and user_apps[-1].get('nickname') == nickname and user_apps[-1].get('status') in ['approved', 'rejected']:
+                await query.edit_message_text(
+                    text=f"Эта заявка уже была {'одобрена' if user_apps[-1]['status'] == 'approved' else 'отклонена'} администратором {user_apps[-1]['admin']}.",
+                    parse_mode='HTML'
+                )
+                return
+            
             applications[str(user_id)].append({
                 'date': datetime.now().isoformat(),
                 'status': 'approved' if action == 'approve' else 'rejected',
@@ -216,7 +225,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         )
                         # Обновляем сообщение с кнопками
                         await query.edit_message_text(
-                            text=f"Анкета игрока {player_link} одобрена и добавлена в whitelist.",
+                            text=f"✅ Анкета игрока {player_link} одобрена и добавлена в whitelist.",
                             parse_mode='HTML'
                         )
                     except Exception as e:
@@ -232,22 +241,32 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
                     # Обновляем сообщение с кнопками
                     await query.edit_message_text(
-                        text=f"Анкета игрока {player_link} отклонена.",
+                        text=f"❌ Анкета игрока {player_link} отклонена.",
                         parse_mode='HTML'
                     )
                 except Exception as e:
                     print(f"Ошибка отправки сообщения об отклонении: {e}")
 
-            # Уведомление другим администраторам
+            # Уведомление другим администраторам и удаление кнопок
             try:
                 for admin_id in ADMIN_IDS:
                     if admin_id != query.from_user.id:
-                        # Отправляем уведомление о решении
-                        await context.bot.send_message(
-                            chat_id=admin_id,
-                            text=f"{admin_name} {'одобрил' if action == 'approve' else 'отклонил'} анкету {player_link}.",
-                            parse_mode='HTML'
-                        )
+                        try:
+                            # Находим сообщение с анкетой у других администраторов
+                            async for message in context.bot.get_chat(admin_id).iter_messages(limit=50):
+                                if (
+                                    message.reply_markup and 
+                                    isinstance(message.reply_markup, InlineKeyboardMarkup) and
+                                    any(f":{user_id}:{nickname}" in button.callback_data for row in message.reply_markup.inline_keyboard for button in row)
+                                ):
+                                    # Обновляем сообщение без кнопок
+                                    await message.edit_text(
+                                        text=f"{admin_name} {'✅ одобрил' if action == 'approve' else '❌ отклонил'} анкету {player_link}.",
+                                        parse_mode='HTML'
+                                    )
+                                    break
+                        except Exception as e:
+                            print(f"Ошибка при обновлении сообщения у администратора {admin_id}: {e}")
             except Exception as e:
                 print(f"Ошибка отправки уведомлений администраторам: {e}")
 
@@ -265,19 +284,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Анкета отменена.')
     return ConversationHandler.END
 
-def main() -> None:
-    # Настройки для более стабильного подключения
-    application = (
-        ApplicationBuilder()
-        .token(TOKEN)
-        .connect_timeout(30.0)  # Увеличиваем таймаут подключения
-        .read_timeout(30.0)     # Увеличиваем таймаут чтения
-        .write_timeout(30.0)    # Увеличиваем таймаут записи
-        .pool_timeout(30.0)     # Увеличиваем таймаут пула
-        .get_updates_read_timeout(30.0)  # Увеличиваем таймаут получения обновлений
-        .build()
-    )
-
+async def main():
+    # Создаем приложение
+    application = ApplicationBuilder().token(TOKEN).build()
+    
+    # Удаляем webhook перед запуском
+    await application.bot.delete_webhook()
+    
+    # Добавляем обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -291,20 +305,13 @@ def main() -> None:
         per_message=False,
         per_user=True
     )
-
+    
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button, pattern='^(approve|reject):'))
-
-    # Запускаем бота с автоматическими повторными попытками при ошибках
-    while True:
-        try:
-            application.run_polling(drop_pending_updates=True)
-        except Exception as e:
-            print(f"Ошибка подключения: {e}")
-            print("Попытка переподключения через 10 секунд...")
-            import time
-            time.sleep(10)
-            continue
+    
+    # Запускаем бота
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
