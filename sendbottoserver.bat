@@ -1,0 +1,1 @@
+scp -P 22101 D:\!projects\unik-regestration-tg\bot.py eunikbot@eunik.ru:/unik/authbot/
