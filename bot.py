@@ -285,11 +285,35 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def main():
-    # Создаем приложение
-    application = ApplicationBuilder().token(TOKEN).build()
+    # Создаем приложение с увеличенными таймаутами
+    application = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .connect_timeout(30.0)  # Увеличиваем таймаут подключения
+        .read_timeout(30.0)     # Увеличиваем таймаут чтения
+        .write_timeout(30.0)    # Увеличиваем таймаут записи
+        .pool_timeout(30.0)     # Увеличиваем таймаут пула
+        .get_updates_read_timeout(30.0)  # Увеличиваем таймаут получения обновлений
+        .build()
+    )
     
-    # Удаляем webhook перед запуском
-    await application.bot.delete_webhook()
+    # Пытаемся удалить webhook с повторными попытками
+    max_retries = 3
+    retry_delay = 5  # секунд
+    
+    for attempt in range(max_retries):
+        try:
+            await application.bot.delete_webhook()
+            break
+        except telegram.error.TimedOut:
+            if attempt < max_retries - 1:
+                print(f"Таймаут при удалении webhook. Повторная попытка через {retry_delay} секунд...")
+                await asyncio.sleep(retry_delay)
+            else:
+                print("Не удалось удалить webhook после всех попыток. Продолжаем без удаления...")
+        except Exception as e:
+            print(f"Ошибка при удалении webhook: {e}")
+            break
     
     # Добавляем обработчики
     conv_handler = ConversationHandler(
@@ -309,8 +333,15 @@ async def main():
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button, pattern='^(approve|reject):'))
     
-    # Запускаем бота
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Запускаем бота с автоматическими повторными попытками при ошибках
+    while True:
+        try:
+            await application.run_polling(allowed_updates=Update.ALL_TYPES)
+        except Exception as e:
+            print(f"Ошибка подключения: {e}")
+            print("Попытка переподключения через 10 секунд...")
+            await asyncio.sleep(10)
+            continue
 
 if __name__ == '__main__':
     import asyncio
