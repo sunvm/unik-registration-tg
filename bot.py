@@ -112,30 +112,40 @@ async def nickname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['nickname'] = update.message.text
     user_data = context.user_data
     user = update.effective_user
+    
     # Создаем ссылку на профиль пользователя
-    user_link = f'<a href="tg://user?id={user.id}">{user_data["nickname"]}</a>'
+    user_mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+    nickname_text = user_data["nickname"]
     
     survey_result = (
+        f"Новая анкета от {user_mention}\n\n"
         f"Изучил правила: {user_data['rules_acknowledged']}\n"
         f"Возраст: {user_data['age']}\n"
-        f"Игровой ник: {user_link}"
+        f"Игровой ник: {nickname_text}"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton("✅", callback_data=f"approve:{update.effective_user.id}:{user_data['nickname']}"),
-            InlineKeyboardButton("❌", callback_data=f"reject:{update.effective_user.id}:{user_data['nickname']}")
+            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve:{user.id}:{nickname_text}"),
+            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject:{user.id}:{nickname_text}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Сохраняем данные в context для использования в других функциях
+    context.user_data['user_mention'] = user_mention
+    context.user_data['nickname_text'] = nickname_text
+
     for admin_id in ADMIN_IDS:
-        await context.bot.send_message(
-            chat_id=admin_id, 
-            text=f"Новая анкета:\n{survey_result}",
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id, 
+                text=survey_result,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            print(f"Ошибка отправки анкеты администратору {admin_id}: {e}")
 
     await update.message.reply_text(
         'Спасибо за заполнение анкеты! 👍\n\n'
@@ -175,15 +185,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user_id = int(data[1])
             nickname = data[2]
 
-            # Создаем ссылку на профиль игрока
-            player_link = f'<a href="tg://user?id={user_id}">{nickname}</a>'
-
-            # Сохраняем информацию о заявке
+            try:
+                # Получаем информацию о пользователе
+                chat = await context.bot.get_chat(user_id)
+                user_mention = f'<a href="tg://user?id={user_id}">{chat.first_name}</a>'
+            except Exception as e:
+                print(f"Ошибка получения информации о пользователе: {e}")
+                user_mention = f"пользователя {nickname}"
+            
+            # Проверяем, не была ли заявка уже обработана
             applications = load_applications()
             if str(user_id) not in applications:
                 applications[str(user_id)] = []
             
-            # Проверяем, не была ли заявка уже обработана
             user_apps = applications.get(str(user_id), [])
             if user_apps and user_apps[-1].get('nickname') == nickname and user_apps[-1].get('status') in ['approved', 'rejected']:
                 await query.edit_message_text(
@@ -191,7 +205,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     parse_mode='HTML'
                 )
                 return
-            
+
+            # Сохраняем информацию о заявке
             applications[str(user_id)].append({
                 'date': datetime.now().isoformat(),
                 'status': 'approved' if action == 'approve' else 'rejected',
@@ -205,24 +220,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 rcon_success = False
                 try:
                     with MCRcon(RCON_HOST, RCON_PASSWORD, RCON_PORT) as mcr:
-                        # Добавляем игрока в whitelist
                         response = mcr.command(f"comfywhitelist add {nickname}")
-                        print(f"RCON ответ: {response}")  # Для отладки
+                        print(f"RCON ответ: {response}")
                         rcon_success = True
                 except Exception as e:
                     print(f"Ошибка RCON подключения: {e}")
                     await query.edit_message_text(
-                        text=f"Ошибка при добавлении игрока {player_link} в whitelist: {str(e)}", 
+                        text=f"Ошибка при добавлении игрока {user_mention} в whitelist: {str(e)}", 
                         parse_mode='HTML'
                     )
                 
                 if rcon_success:
-                    # Отправляем сообщение игроку
                     try:
+                        # Отправляем сообщение игроку
                         await context.bot.send_message(
                             chat_id=user_id,
                             text=(
-                                f"Здравствуйте, {player_link}! Ваша заявка одобрена, и вы добавлены в вайтлист сервера.\n\n"
+                                f"Здравствуйте, {user_mention}! Ваша заявка одобрена, и вы добавлены в вайтлист сервера.\n\n"
                                 "IP и другую информацию о сервере можно найти в нашем тг канале: https://t.me/unikMC\n\n"
                                 "Либо на дискорд сервере https://discord.com/invite/XBWNN58qJb\n\n"
                                 "Хорошей игры и не нарушайте правила сервера!"
@@ -231,7 +245,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         )
                         # Обновляем сообщение с кнопками
                         await query.edit_message_text(
-                            text=f"✅ Анкета игрока {player_link} одобрена и добавлена в whitelist.",
+                            text=f"✅ Анкета игрока {user_mention} одобрена и добавлена в whitelist.",
                             parse_mode='HTML'
                         )
                     except Exception as e:
@@ -242,37 +256,30 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     # Отправляем сообщение игроку об отклонении
                     await context.bot.send_message(
                         chat_id=user_id,
-                        text=f"К сожалению, {player_link}, ваша заявка была отклонена. Вы сможете подать новую заявку через 7 дней.",
+                        text=f"К сожалению, {user_mention}, ваша заявка была отклонена. Вы сможете подать новую заявку через 7 дней.",
                         parse_mode='HTML'
                     )
                     # Обновляем сообщение с кнопками
                     await query.edit_message_text(
-                        text=f"❌ Анкета игрока {player_link} отклонена.",
+                        text=f"❌ Анкета игрока {user_mention} отклонена.",
                         parse_mode='HTML'
                     )
                 except Exception as e:
                     print(f"Ошибка отправки сообщения об отклонении: {e}")
 
-            # Уведомление другим администраторам и удаление кнопок
+            # Уведомление другим администраторам
             try:
                 for admin_id in ADMIN_IDS:
                     if admin_id != query.from_user.id:
                         try:
-                            # Находим сообщение с анкетой у других администраторов
-                            async for message in context.bot.get_chat(admin_id).iter_messages(limit=50):
-                                if (
-                                    message.reply_markup and 
-                                    isinstance(message.reply_markup, InlineKeyboardMarkup) and
-                                    any(f":{user_id}:{nickname}" in button.callback_data for row in message.reply_markup.inline_keyboard for button in row)
-                                ):
-                                    # Обновляем сообщение без кнопок
-                                    await message.edit_text(
-                                        text=f"{admin_name} {'✅ одобрил' if action == 'approve' else '❌ отклонил'} анкету {player_link}.",
-                                        parse_mode='HTML'
-                                    )
-                                    break
+                            # Отправляем новое сообщение вместо редактирования старого
+                            await context.bot.send_message(
+                                chat_id=admin_id,
+                                text=f"{admin_name} {'✅ одобрил' if action == 'approve' else '❌ отклонил'} анкету игрока {user_mention}.",
+                                parse_mode='HTML'
+                            )
                         except Exception as e:
-                            print(f"Ошибка при обновлении сообщения у администратора {admin_id}: {e}")
+                            print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
             except Exception as e:
                 print(f"Ошибка отправки уведомлений администраторам: {e}")
 
