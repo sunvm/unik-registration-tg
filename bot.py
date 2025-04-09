@@ -262,7 +262,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                 try:
                                     await context.bot.send_message(
                                         chat_id=admin_id,
-                                        text=f"{admin_name} ✅ одобрил анкету игрока {user_tag}"
+                                        text=f"{admin_name} ✅ одобрил анкету игрока {user_tag} ({nickname})"
                                     )
                                 except Exception as e:
                                     print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
@@ -288,7 +288,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                             try:
                                 await context.bot.send_message(
                                     chat_id=admin_id,
-                                    text=f"{admin_name} ❌ отклонил анкету игрока {user_tag}"
+                                    text=f"{admin_name} ❌ отклонил анкету игрока {user_tag} ({nickname})"
                                 )
                             except Exception as e:
                                 print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
