@@ -124,8 +124,12 @@ async def nickname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = context.user_data
     user = update.effective_user
     
-    # Создаем ссылку на профиль пользователя
-    user_mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+    # Создаем ссылку на профиль пользователя и сохраняем данные пользователя
+    user_data['user_id'] = user.id
+    # Приоритет использования username
+    display_name = user.username if user.username else user.first_name
+    user_data['display_name'] = display_name
+    user_mention = f'<a href="tg://user?id={user.id}">{display_name}</a>'
     nickname_text = user_data["nickname"]
     
     survey_result = (
@@ -137,15 +141,11 @@ async def nickname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     keyboard = [
         [
-            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve:{user.id}:{nickname_text}"),
-            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject:{user.id}:{nickname_text}")
+            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve:{user.id}:{nickname_text}:{display_name}"),
+            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject:{user.id}:{nickname_text}:{display_name}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Сохраняем данные в context для использования в других функциях
-    context.user_data['user_mention'] = user_mention
-    context.user_data['nickname_text'] = nickname_text
 
     for admin_id in ADMIN_IDS:
         try:
@@ -195,14 +195,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if action in ["approve", "reject"]:
             user_id = int(data[1])
             nickname = data[2]
-
-            try:
-                # Получаем информацию о пользователе
-                chat = await context.bot.get_chat(user_id)
-                user_mention = f'<a href="tg://user?id={user_id}">{chat.first_name}</a>'
-            except Exception as e:
-                print(f"Ошибка получения информации о пользователе: {e}")
-                user_mention = f"пользователя {nickname}"
+            display_name = data[3] if len(data) > 3 else nickname
+            
+            # Создаем ссылку на профиль пользователя
+            user_mention = f'<a href="tg://user?id={user_id}">{display_name}</a>'
             
             # Проверяем, не была ли заявка уже обработана
             applications = load_applications()
@@ -222,7 +218,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 'date': datetime.now().isoformat(),
                 'status': 'approved' if action == 'approve' else 'rejected',
                 'nickname': nickname,
-                'admin': admin_name
+                'admin': admin_name,
+                'display_name': display_name
             })
             save_applications(applications)
 
