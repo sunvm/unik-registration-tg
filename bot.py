@@ -253,7 +253,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         )
                         # Обновляем сообщение с кнопками
                         await query.edit_message_text(
-                            text=f"✅ Анкета игрока {user_tag} одобрена и добавлена в whitelist."
+                            text=f"✅ Анкета игрока {user_tag} ({nickname}) одобрена и добавлена в whitelist."
                         )
                         
                         # Уведомляем других администраторов
@@ -279,7 +279,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
                     # Обновляем сообщение с кнопками
                     await query.edit_message_text(
-                        text=f"❌ Анкета игрока {user_tag} отклонена."
+                        text=f"❌ Анкета игрока {user_tag} ({nickname}) отклонена."
                     )
                     
                     # Уведомляем других администраторов
