@@ -124,16 +124,16 @@ async def nickname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = context.user_data
     user = update.effective_user
     
-    # Создаем ссылку на профиль пользователя и сохраняем данные пользователя
+    # Сохраняем данные пользователя
     user_data['user_id'] = user.id
-    # Приоритет использования username
     display_name = user.username if user.username else user.first_name
     user_data['display_name'] = display_name
-    user_mention = f'<a href="tg://user?id={user.id}">{display_name}</a>'
     nickname_text = user_data["nickname"]
     
+    # Формируем текст анкеты с тегом пользователя
+    user_tag = f"@{user.username}" if user.username else f"id: {user.id}"
     survey_result = (
-        f"Новая анкета от {user_mention}\n\n"
+        f"Новая анкета от {user_tag}\n\n"
         f"Изучил правила: {user_data['rules_acknowledged']}\n"
         f"Возраст: {user_data['age']}\n"
         f"Игровой ник: {nickname_text}"
@@ -152,8 +152,7 @@ async def nickname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await context.bot.send_message(
                 chat_id=admin_id, 
                 text=survey_result,
-                reply_markup=reply_markup,
-                parse_mode='HTML'
+                reply_markup=reply_markup
             )
         except Exception as e:
             print(f"Ошибка отправки анкеты администратору {admin_id}: {e}")
@@ -197,8 +196,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             nickname = data[2]
             display_name = data[3] if len(data) > 3 else nickname
             
-            # Создаем ссылку на профиль пользователя
-            user_mention = f'<a href="tg://user?id={user_id}">{display_name}</a>'
+            try:
+                # Получаем актуальную информацию о пользователе
+                chat = await context.bot.get_chat(user_id)
+                user_tag = f"@{chat.username}" if chat.username else f"id: {user_id}"
+            except:
+                user_tag = f"id: {user_id}"
             
             # Проверяем, не была ли заявка уже обработана
             applications = load_applications()
@@ -208,8 +211,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user_apps = applications.get(str(user_id), [])
             if user_apps and user_apps[-1].get('nickname') == nickname and user_apps[-1].get('status') in ['approved', 'rejected']:
                 await query.edit_message_text(
-                    text=f"Эта заявка уже была {'одобрена' if user_apps[-1]['status'] == 'approved' else 'отклонена'} администратором {user_apps[-1]['admin']}.",
-                    parse_mode='HTML'
+                    text=f"Эта заявка уже была {'одобрена' if user_apps[-1]['status'] == 'approved' else 'отклонена'} администратором {user_apps[-1]['admin']}."
                 )
                 return
 
@@ -234,8 +236,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 except Exception as e:
                     print(f"Ошибка RCON подключения: {e}")
                     await query.edit_message_text(
-                        text=f"Ошибка при добавлении игрока {user_mention} в whitelist: {str(e)}", 
-                        parse_mode='HTML'
+                        text=f"Ошибка при добавлении игрока {user_tag} в whitelist: {str(e)}"
                     )
                 
                 if rcon_success:
@@ -244,17 +245,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         await context.bot.send_message(
                             chat_id=user_id,
                             text=(
-                                f"Здравствуйте, {user_mention}! Ваша заявка одобрена, и вы добавлены в вайтлист сервера.\n\n"
+                                f"Здравствуйте! Ваша заявка одобрена, и вы добавлены в вайтлист сервера.\n\n"
                                 "IP и другую информацию о сервере можно найти в нашем тг канале: https://t.me/unikMC\n\n"
                                 "Либо на дискорд сервере https://discord.com/invite/XBWNN58qJb\n\n"
                                 "Хорошей игры и не нарушайте правила сервера!"
-                            ),
-                            parse_mode='HTML'
+                            )
                         )
                         # Обновляем сообщение с кнопками
                         await query.edit_message_text(
-                            text=f"✅ Анкета игрока {user_mention} одобрена и добавлена в whitelist.",
-                            parse_mode='HTML'
+                            text=f"✅ Анкета игрока {user_tag} одобрена и добавлена в whitelist."
                         )
                         
                         # Уведомляем других администраторов
@@ -263,8 +262,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                 try:
                                     await context.bot.send_message(
                                         chat_id=admin_id,
-                                        text=f"{admin_name} ✅ одобрил анкету игрока {user_mention}",
-                                        parse_mode='HTML'
+                                        text=f"{admin_name} ✅ одобрил анкету игрока {user_tag}"
                                     )
                                 except Exception as e:
                                     print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
@@ -277,13 +275,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     # Отправляем сообщение игроку об отклонении
                     await context.bot.send_message(
                         chat_id=user_id,
-                        text=f"К сожалению, {user_mention}, ваша заявка была отклонена. Вы сможете подать новую заявку через 7 дней.",
-                        parse_mode='HTML'
+                        text=f"К сожалению, ваша заявка была отклонена. Вы сможете подать новую заявку через 7 дней."
                     )
                     # Обновляем сообщение с кнопками
                     await query.edit_message_text(
-                        text=f"❌ Анкета игрока {user_mention} отклонена.",
-                        parse_mode='HTML'
+                        text=f"❌ Анкета игрока {user_tag} отклонена."
                     )
                     
                     # Уведомляем других администраторов
@@ -292,8 +288,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                             try:
                                 await context.bot.send_message(
                                     chat_id=admin_id,
-                                    text=f"{admin_name} ❌ отклонил анкету игрока {user_mention}",
-                                    parse_mode='HTML'
+                                    text=f"{admin_name} ❌ отклонил анкету игрока {user_tag}"
                                 )
                             except Exception as e:
                                 print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
@@ -305,8 +300,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         print(f"Общая ошибка в обработчике кнопок: {e}")
         try:
             await query.edit_message_text(
-                text="Произошла ошибка при обработке заявки. Пожалуйста, попробуйте позже.",
-                parse_mode='HTML'
+                text="Произошла ошибка при обработке заявки. Пожалуйста, попробуйте позже."
             )
         except:
             pass
@@ -351,20 +345,16 @@ async def main():
 
 def run_bot():
     """Запускает бота с правильной обработкой сигналов"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
     try:
-        app = loop.run_until_complete(main())
-        print('Бот успешно запущен')
-        loop.run_until_complete(app.run_polling(drop_pending_updates=True))
+        app = asyncio.run(main())
+        app.run_polling(drop_pending_updates=True)
     except KeyboardInterrupt:
         print('Получен сигнал остановки...')
-        loop.run_until_complete(app.stop())
+        if app:
+            app.stop()
     except Exception as e:
         print(f'Произошла ошибка: {e}')
     finally:
-        loop.close()
         print('Бот остановлен.')
 
 if __name__ == '__main__':
