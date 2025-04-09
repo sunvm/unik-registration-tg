@@ -11,6 +11,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from config import TOKEN, RCON_HOST, RCON_PORT, RCON_PASSWORD, ADMIN_IDS, ADMIN_NAMES
+from typing import Dict, List, Tuple, Optional
 
 # Подавляем конкретное предупреждение
 warnings.filterwarnings('ignore', category=PTBUserWarning)
@@ -18,21 +19,31 @@ warnings.filterwarnings('ignore', category=PTBUserWarning)
 # Состояния для ConversationHandler
 RULES, AGE, NICKNAME, OTHER_INFO = range(4)
 
-# Файл для хранения информации о заявках
-APPLICATIONS_FILE = 'applications.json'
+# Создаем директорию для данных, если она не существует
+DATA_DIR = 'data'
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+APPLICATIONS_FILE = os.path.join(DATA_DIR, 'applications.json')
 
 # Глобальная переменная для приложения
 application = None
 
-def load_applications():
-    if os.path.exists(APPLICATIONS_FILE):
-        with open(APPLICATIONS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+def load_applications() -> Dict:
+    try:
+        if os.path.exists(APPLICATIONS_FILE):
+            with open(APPLICATIONS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Ошибка при чтении файла applications.json: {e}")
     return {}
 
-def save_applications(applications):
-    with open(APPLICATIONS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(applications, f, ensure_ascii=False, indent=4)
+def save_applications(applications: Dict) -> None:
+    try:
+        with open(APPLICATIONS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(applications, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка при сохранении файла applications.json: {e}")
 
 def can_submit_application(user_id):
     if user_id in ADMIN_IDS:
