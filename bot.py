@@ -346,15 +346,29 @@ async def main():
 def run_bot():
     """Запускает бота с правильной обработкой сигналов"""
     try:
-        app = asyncio.run(main())
-        app.run_polling(drop_pending_updates=True)
+        # Создаем и настраиваем event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Запускаем приложение
+        app = loop.run_until_complete(main())
+        print('Бот успешно запущен')
+        
+        # Запускаем polling в том же event loop
+        loop.run_until_complete(app.initialize())
+        loop.run_until_complete(app.start())
+        loop.run_until_complete(app.updater.start_polling())
+        loop.run_forever()
+        
     except KeyboardInterrupt:
         print('Получен сигнал остановки...')
-        if app:
-            app.stop()
+        if 'app' in locals():
+            loop.run_until_complete(app.stop())
     except Exception as e:
         print(f'Произошла ошибка: {e}')
     finally:
+        if 'loop' in locals():
+            loop.close()
         print('Бот остановлен.')
 
 if __name__ == '__main__':
