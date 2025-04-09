@@ -290,18 +290,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Анкета отменена.')
     return ConversationHandler.END
 
-async def shutdown(signal, loop):
-    """Корректное завершение работы бота"""
-    print(f"Получен сигнал {signal.name}...")
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    [task.cancel() for task in tasks]
-    print(f"Отменено {len(tasks)} задач.")
-    await asyncio.gather(*tasks, return_exceptions=True)
-    loop.stop()
-    print('Shutdown complete.')
-
 async def main():
-    global application
     # Создаем приложение с увеличенными таймаутами
     application = (
         ApplicationBuilder()
@@ -313,32 +302,6 @@ async def main():
         .get_updates_read_timeout(30.0)
         .build()
     )
-    
-    # Настраиваем обработку сигналов
-    loop = asyncio.get_event_loop()
-    signals = (signal.SIGTERM, signal.SIGINT)
-    for s in signals:
-        loop.add_signal_handler(
-            s, lambda s=s: asyncio.create_task(shutdown(s, loop))
-        )
-    
-    # Пытаемся удалить webhook с повторными попытками
-    max_retries = 3
-    retry_delay = 5
-    
-    for attempt in range(max_retries):
-        try:
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            break
-        except telegram.error.TimedOut:
-            if attempt < max_retries - 1:
-                print(f"Таймаут при удалении webhook. Повторная попытка через {retry_delay} секунд...")
-                await asyncio.sleep(retry_delay)
-            else:
-                print("Не удалось удалить webhook после всех попыток. Продолжаем без удаления...")
-        except Exception as e:
-            print(f"Ошибка при удалении webhook: {e}")
-            break
     
     # Добавляем обработчики
     conv_handler = ConversationHandler(
@@ -358,22 +321,26 @@ async def main():
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button, pattern='^(approve|reject):'))
     
-    try:
-        print('Запуск бота...')
-        await application.initialize()
-        await application.start()
-        await application.run_polling(drop_pending_updates=True)
-    except Exception as e:
-        print(f"Ошибка при запуске бота: {e}")
-    finally:
-        print('Остановка бота...')
-        await application.stop()
-        await application.shutdown()
+    print('Запуск бота...')
+    return application
 
-if __name__ == '__main__':
+def run_bot():
+    """Запускает бота с правильной обработкой сигналов"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     try:
-        asyncio.run(main())
+        app = loop.run_until_complete(main())
+        print('Бот успешно запущен')
+        loop.run_until_complete(app.run_polling(drop_pending_updates=True))
     except KeyboardInterrupt:
         print('Получен сигнал остановки...')
+        loop.run_until_complete(app.stop())
+    except Exception as e:
+        print(f'Произошла ошибка: {e}')
     finally:
+        loop.close()
         print('Бот остановлен.')
+
+if __name__ == '__main__':
+    run_bot()
