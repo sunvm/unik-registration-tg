@@ -1,2 +1,2 @@
 python-telegram-bot==20.7
-mcrcon==0.7.1 
+mcrcon==0.7.0
