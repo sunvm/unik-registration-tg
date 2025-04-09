@@ -259,6 +259,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                             text=f"✅ Анкета игрока {user_mention} одобрена и добавлена в whitelist.",
                             parse_mode='HTML'
                         )
+                        
+                        # Уведомляем других администраторов
+                        for admin_id in ADMIN_IDS:
+                            if admin_id != query.from_user.id:
+                                try:
+                                    await context.bot.send_message(
+                                        chat_id=admin_id,
+                                        text=f"{admin_name} ✅ одобрил анкету игрока {user_mention}",
+                                        parse_mode='HTML'
+                                    )
+                                except Exception as e:
+                                    print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
+                                    
                     except Exception as e:
                         print(f"Ошибка отправки сообщения: {e}")
 
@@ -275,24 +288,21 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         text=f"❌ Анкета игрока {user_mention} отклонена.",
                         parse_mode='HTML'
                     )
+                    
+                    # Уведомляем других администраторов
+                    for admin_id in ADMIN_IDS:
+                        if admin_id != query.from_user.id:
+                            try:
+                                await context.bot.send_message(
+                                    chat_id=admin_id,
+                                    text=f"{admin_name} ❌ отклонил анкету игрока {user_mention}",
+                                    parse_mode='HTML'
+                                )
+                            except Exception as e:
+                                print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
+                                
                 except Exception as e:
                     print(f"Ошибка отправки сообщения об отклонении: {e}")
-
-            # Уведомление другим администраторам
-            try:
-                for admin_id in ADMIN_IDS:
-                    if admin_id != query.from_user.id:
-                        try:
-                            # Отправляем новое сообщение вместо редактирования старого
-                            await context.bot.send_message(
-                                chat_id=admin_id,
-                                text=f"{admin_name} {'✅ одобрил' if action == 'approve' else '❌ отклонил'} анкету игрока {user_mention}.",
-                                parse_mode='HTML'
-                            )
-                        except Exception as e:
-                            print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
-            except Exception as e:
-                print(f"Ошибка отправки уведомлений администраторам: {e}")
 
     except Exception as e:
         print(f"Общая ошибка в обработчике кнопок: {e}")
