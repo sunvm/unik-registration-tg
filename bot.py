@@ -8,6 +8,8 @@ import json
 import os
 from datetime import datetime, timedelta
 from config import TOKEN, RCON_HOST, RCON_PORT, RCON_PASSWORD, ADMIN_IDS, ADMIN_NAMES
+import signal
+import sys
 
 # Подавляем конкретное предупреждение
 warnings.filterwarnings('ignore', category=PTBUserWarning)
@@ -17,6 +19,9 @@ RULES, AGE, NICKNAME, OTHER_INFO = range(4)
 
 # Файл для хранения информации о заявках
 APPLICATIONS_FILE = 'applications.json'
+
+# Глобальная переменная для приложения
+application = None
 
 def load_applications():
     if os.path.exists(APPLICATIONS_FILE):
@@ -284,26 +289,45 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Анкета отменена.')
     return ConversationHandler.END
 
+async def shutdown(signal, loop):
+    """Корректное завершение работы бота"""
+    print(f"Получен сигнал {signal.name}...")
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    [task.cancel() for task in tasks]
+    print(f"Отменено {len(tasks)} задач.")
+    await asyncio.gather(*tasks, return_exceptions=True)
+    loop.stop()
+    print('Shutdown complete.')
+
 async def main():
+    global application
     # Создаем приложение с увеличенными таймаутами
     application = (
         ApplicationBuilder()
         .token(TOKEN)
-        .connect_timeout(30.0)  # Увеличиваем таймаут подключения
-        .read_timeout(30.0)     # Увеличиваем таймаут чтения
-        .write_timeout(30.0)    # Увеличиваем таймаут записи
-        .pool_timeout(30.0)     # Увеличиваем таймаут пула
-        .get_updates_read_timeout(30.0)  # Увеличиваем таймаут получения обновлений
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(30.0)
+        .get_updates_read_timeout(30.0)
         .build()
     )
     
+    # Настраиваем обработку сигналов
+    loop = asyncio.get_event_loop()
+    signals = (signal.SIGTERM, signal.SIGINT)
+    for s in signals:
+        loop.add_signal_handler(
+            s, lambda s=s: asyncio.create_task(shutdown(s, loop))
+        )
+    
     # Пытаемся удалить webhook с повторными попытками
     max_retries = 3
-    retry_delay = 5  # секунд
+    retry_delay = 5
     
     for attempt in range(max_retries):
         try:
-            await application.bot.delete_webhook()
+            await application.bot.delete_webhook(drop_pending_updates=True)
             break
         except telegram.error.TimedOut:
             if attempt < max_retries - 1:
@@ -333,16 +357,22 @@ async def main():
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button, pattern='^(approve|reject):'))
     
-    # Запускаем бота с автоматическими повторными попытками при ошибках
-    while True:
-        try:
-            await application.run_polling(allowed_updates=Update.ALL_TYPES)
-        except Exception as e:
-            print(f"Ошибка подключения: {e}")
-            print("Попытка переподключения через 10 секунд...")
-            await asyncio.sleep(10)
-            continue
+    try:
+        print('Запуск бота...')
+        await application.initialize()
+        await application.start()
+        await application.run_polling(drop_pending_updates=True)
+    except Exception as e:
+        print(f"Ошибка при запуске бота: {e}")
+    finally:
+        print('Остановка бота...')
+        await application.stop()
+        await application.shutdown()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print('Получен сигнал остановки...')
+    finally:
+        print('Бот остановлен.')
