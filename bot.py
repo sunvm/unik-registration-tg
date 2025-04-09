@@ -1,3 +1,6 @@
+import asyncio
+import signal
+import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 import telegram
@@ -8,8 +11,6 @@ import json
 import os
 from datetime import datetime, timedelta
 from config import TOKEN, RCON_HOST, RCON_PORT, RCON_PASSWORD, ADMIN_IDS, ADMIN_NAMES
-import signal
-import sys
 
 # Подавляем конкретное предупреждение
 warnings.filterwarnings('ignore', category=PTBUserWarning)
