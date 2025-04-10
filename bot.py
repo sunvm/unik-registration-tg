@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple, Optional
 warnings.filterwarnings('ignore', category=PTBUserWarning)
 
 # Состояния для ConversationHandler
-RULES, AGE, NICKNAME, OTHER_INFO = range(4)
+RULES, AGE, NICKNAME, OTHER_INFO, REJECT_REASON = range(5)
 
 # Создаем директорию для данных, если она не существует
 DATA_DIR = 'data'
@@ -215,16 +215,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
                 return
 
-            # Сохраняем информацию о заявке
-            applications[str(user_id)].append({
-                'date': datetime.now().isoformat(),
-                'status': 'approved' if action == 'approve' else 'rejected',
-                'nickname': nickname,
-                'admin': admin_name,
-                'display_name': display_name
-            })
-            save_applications(applications)
-
             if action == "approve":
                 # Добавление игрока в whitelist через RCON
                 rcon_success = False
@@ -271,30 +261,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         print(f"Ошибка отправки сообщения: {e}")
 
             elif action == "reject":
-                try:
-                    # Отправляем сообщение игроку об отклонении
-                    await context.bot.send_message(
-                        chat_id=user_id,
-                        text=f"К сожалению, ваша заявка была отклонена. Вы сможете подать новую заявку через 7 дней."
-                    )
-                    # Обновляем сообщение с кнопками
-                    await query.edit_message_text(
-                        text=f"❌ Анкета игрока {user_tag} ({nickname}) отклонена."
-                    )
-                    
-                    # Уведомляем других администраторов
-                    for admin_id in ADMIN_IDS:
-                        if admin_id != query.from_user.id:
-                            try:
-                                await context.bot.send_message(
-                                    chat_id=admin_id,
-                                    text=f"{admin_name} ❌ отклонил анкету игрока {user_tag} ({nickname})"
-                                )
-                            except Exception as e:
-                                print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
-                                
-                except Exception as e:
-                    print(f"Ошибка отправки сообщения об отклонении: {e}")
+                # Сохраняем данные для ввода причины
+                context.user_data['reject_data'] = {
+                    'user_id': user_id,
+                    'nickname': nickname,
+                    'user_tag': user_tag,
+                    'admin_name': admin_name
+                }
+                
+                # Запрашиваем причину отклонения
+                await query.edit_message_text(
+                    text="Пожалуйста, укажите причину отклонения заявки одним сообщением:"
+                )
+                return REJECT_REASON
 
     except Exception as e:
         print(f"Общая ошибка в обработчике кнопок: {e}")
@@ -304,6 +283,66 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
         except:
             pass
+
+async def handle_reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        reason = update.message.text
+        reject_data = context.user_data.get('reject_data', {})
+        
+        if not reject_data:
+            await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте снова.")
+            return ConversationHandler.END
+            
+        user_id = reject_data['user_id']
+        nickname = reject_data['nickname']
+        user_tag = reject_data['user_tag']
+        admin_name = reject_data['admin_name']
+        
+        # Сохраняем информацию о заявке
+        applications = load_applications()
+        if str(user_id) not in applications:
+            applications[str(user_id)] = []
+            
+        applications[str(user_id)].append({
+            'date': datetime.now().isoformat(),
+            'status': 'rejected',
+            'nickname': nickname,
+            'admin': admin_name,
+            'reason': reason
+        })
+        save_applications(applications)
+        
+        try:
+            # Отправляем сообщение игроку об отклонении
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"К сожалению, ваша заявка была отклонена.\nПричина: {reason}\n\nВы сможете подать новую заявку через 7 дней."
+            )
+            
+            # Уведомляем администратора, который отклонил заявку
+            await update.message.reply_text(
+                f"❌ Анкета игрока {user_tag} ({nickname}) отклонена.\nПричина: {reason}"
+            )
+            
+            # Уведомляем других администраторов
+            for admin_id in ADMIN_IDS:
+                if admin_id != update.effective_user.id:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=f"{admin_name} ❌ отклонил анкету игрока {user_tag} ({nickname})\nПричина: {reason}"
+                        )
+                    except Exception as e:
+                        print(f"Ошибка отправки уведомления администратору {admin_id}: {e}")
+                        
+        except Exception as e:
+            print(f"Ошибка отправки сообщения об отклонении: {e}")
+            
+    except Exception as e:
+        print(f"Ошибка при обработке причины отклонения: {e}")
+        await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте снова.")
+        
+    return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Анкета отменена.')
@@ -330,6 +369,7 @@ async def main():
             AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, age)],
             NICKNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, nickname)],
             OTHER_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, other_info)],
+            REJECT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reject_reason)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
         per_chat=True,
