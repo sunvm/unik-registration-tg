@@ -248,6 +248,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                 f"Здравствуйте! Ваша заявка одобрена, и вы добавлены в вайтлист сервера.\n\n"
                                 "IP и другую информацию о сервере можно найти в нашем тг канале: https://t.me/unikMC\n\n"
                                 "Либо на дискорд сервере https://discord.com/invite/XBWNN58qJb\n\n"
+                                "А также можешь присоединиться к нам в текстовый чат/канал в тг: https://t.me/+BKLzHclsz5hhMDYy\n\n"
                                 "Хорошей игры и не нарушайте правила сервера!"
                             )
                         )
