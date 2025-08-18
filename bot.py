@@ -78,8 +78,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     welcome_message = (
         "Добро пожаловать на сервер! Перед началом регистрации прочитай правила:\n\n"
-        'Основная ссылка: <a href="https://eunik.ru/docs/rules/">открыть</a>\n'
-        'Резервная ссылка: <a href="https://docs.google.com/gview?embedded=1&url=https://eunik.ru/docs/rules/">открыть</a>\n\n'
+        'Основная ссылка: <a href="https://eunik.ru/docs/rules">открыть</a>\n'
+        'Резервная ссылка: <a href="https://docs.google.com/gview?embedded=1&url=https://eunik.ru/docs/rules">открыть</a>\n\n'
         'Вы изучили правила сервера?'
     )
 
